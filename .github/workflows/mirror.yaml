@@ -15,15 +15,15 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Push to mirror
+    - name: Mirror master to my-repo-mirror
       env:
         PAT: ${{ secrets.MIRROR_PAT }}
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-        # Voeg mirror remote toe (met persoonlijke token voor authenticatie)
+        # Voeg mirror remote toe met PAT-authenticatie
         git remote add mirror "https://x-access-token:${PAT}@github.com/KennyVos/my-repo-mirror.git"
 
-        # Push enkel master
+        # Push enkel de master branch
         git push mirror master --force
