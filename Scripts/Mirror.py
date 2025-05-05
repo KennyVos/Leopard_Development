@@ -8,13 +8,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# === CONFIGURATIE ===
+# === CONFIGURATIE UIT .env ===
 GITHUB_USER = os.getenv("GITHUB_USER")
 GITHUB_PAT = os.getenv("GITHUB_PAT")
+SOURCE_REPO_NAME = os.getenv("SOURCE_REPO_NAME")
+TARGET_REPO_NAME = os.getenv("TARGET_REPO_NAME")
 
 
-SOURCE_REPO = f"https://{GITHUB_USER}:{GITHUB_PAT}@github.com/{GITHUB_USER}/Leopard_Development.git"
-TARGET_REPO = f"https://{GITHUB_USER}:{GITHUB_PAT}@github.com/{GITHUB_USER}/my-repo-mirror.git"
+SOURCE_REPO = f"https://{GITHUB_USER}:{GITHUB_PAT}@github.com/{GITHUB_USER}/{SOURCE_REPO_NAME}.git"
+TARGET_REPO = f"https://{GITHUB_USER}:{GITHUB_PAT}@github.com/{GITHUB_USER}/{TARGET_REPO_NAME}.git"
 
 # === COMMANDO-HULPFUNCTIE ===
 def run(command, cwd=None):
@@ -47,8 +49,8 @@ def snapshot_mirror():
 
         print("🧱 Initialiseer nieuwe Git-repo in clean folder...")
         run("git init", cwd=clean_path)
-        run("git config user.name \"Snapshot Bot\"", cwd=clean_path)
-        run("git config user.email \"snapshot@bot.local\"", cwd=clean_path)
+        run("git config user.name \"YPTF-Engineering\"", cwd=clean_path)
+        run("git config user.email \"Engineering@yYPTF-Engineering.be\"", cwd=clean_path)
 
         run("git add .", cwd=clean_path)
         run(f'git commit -m "{commit_message.strip()}"', cwd=clean_path)
