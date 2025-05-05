@@ -42,14 +42,16 @@ def snapshot_mirror():
         print("📤 Extract laatste snapshot (zonder .git)...")
         shutil.copytree(clone_path, clean_path, ignore=shutil.ignore_patterns('.git'))
 
+        print("🧾 Haal originele commit-boodschap op...")
+        commit_message = run("git log -1 --pretty=%B", cwd=clone_path)
+
         print("🧱 Initialiseer nieuwe Git-repo in clean folder...")
         run("git init", cwd=clean_path)
-        run("git config user.name \"YPTF-Engineering\"", cwd=clean_path)
-        run("git config user.email \"Engineering@YPTF-Engineering.be\"", cwd=clean_path)
+        run("git config user.name \"Snapshot Bot\"", cwd=clean_path)
+        run("git config user.email \"snapshot@bot.local\"", cwd=clean_path)
 
         run("git add .", cwd=clean_path)
-        run('git commit -m "Mirror snapshot van master (laatste commit)"', cwd=clean_path)
-
+        run(f'git commit -m "{commit_message.strip()}"', cwd=clean_path)
 
         print("🔗 Push naar mirror-repo...")
         run(f"git remote add origin {TARGET_REPO}", cwd=clean_path)
@@ -60,6 +62,7 @@ def snapshot_mirror():
     finally:
         print("🧹 Opruimen...")
         shutil.rmtree(temp_dir, onerror=on_rm_error)
+
 
 # === UITVOERING ===
 if __name__ == "__main__":
