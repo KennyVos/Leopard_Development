@@ -23,7 +23,7 @@ def run(cmd, cwd=None):
         raise RuntimeError(f"Fout bij commando: {cmd}\n{result.stderr}")
     return result.stdout.strip()
 
-def mirror_merge_commits_only():
+def mirror_merge_commits_with_feature_message():
     with tempfile.TemporaryDirectory() as temp_dir:
         source_path = os.path.join(temp_dir, "source")
         mirror_path = os.path.join(temp_dir, "mirror")
@@ -38,12 +38,10 @@ def mirror_merge_commits_only():
         commits = run("git log --first-parent --reverse --format=%H origin/master", cwd=source_path).splitlines()
 
         for commit_hash in commits:
-            # Check of commit een merge is (meer dan 1 ouder)
             parent_line = run(f"git rev-list --parents -n 1 {commit_hash}", cwd=source_path)
-            parent_count = len(parent_line.strip().split()) - 1
-
-            if parent_count <= 1:
-                print(f"⏭️  Sla gewone commit {commit_hash} over (heeft {parent_count} ouder)")
+            parent_hashes = parent_line.strip().split()[1:]  # skip self commit
+            if len(parent_hashes) <= 1:
+                print(f"⏭️  Sla gewone commit {commit_hash} over (heeft {len(parent_hashes)} ouder)")
                 continue
 
             print(f"🔁 Mirror merge commit: {commit_hash}")
@@ -68,23 +66,30 @@ def mirror_merge_commits_only():
                 else:
                     shutil.copy2(src_item, dst_item)
 
-            message = run("git log -1 --pretty=%B", cwd=source_path).strip()
+            # Haal commit message van 2e ouder (feature branch head)
+            feature_parent = parent_hashes[1]
+            feature_message = run(f"git log -1 --pretty=%B {feature_parent}", cwd=source_path).strip()
+
+            # Combineer met originele merge boodschap
+            merge_message = run(f"git log -1 --pretty=%s {commit_hash}", cwd=source_path).strip()
+            combined_message = f"{merge_message}\n\nLaatste commit uit feature branch:\n{feature_message}"
+
             author_name = run("git log -1 --pretty=%an", cwd=source_path).strip()
             author_email = run("git log -1 --pretty=%ae", cwd=source_path).strip()
 
             commit_file = os.path.join(mirror_path, "commit_msg.txt")
             with open(commit_file, "w", encoding="utf-8") as f:
-                f.write(message)
+                f.write(combined_message)
 
             run("git add .", cwd=mirror_path)
             run(f'git -c user.name="{author_name}" -c user.email="{author_email}" commit -F "{commit_file}"', cwd=mirror_path)
 
         print("🚀 Push alle gemirrorde merge commits...")
         run("git push origin master", cwd=mirror_path)
-        print("✅ Alleen merge commits van master succesvol gemirrord.")
+        print("✅ Alleen merge commits met feature-beschrijving succesvol gemirrord.")
 
 if __name__ == "__main__":
     try:
-        mirror_merge_commits_only()
+        mirror_merge_commits_with_feature_message()
     except Exception as e:
         print(f"❌ Fout tijdens mirroring: {e}")
