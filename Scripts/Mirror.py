@@ -1,10 +1,9 @@
+
 import os
 import shutil
 import subprocess
 import tempfile
-import stat
 from dotenv import load_dotenv
-
 
 load_dotenv()
 
@@ -18,60 +17,70 @@ TARGET_REPO_NAME = os.getenv("TARGET_REPO_NAME")
 SOURCE_REPO = f"https://{GITHUB_USER}:{GITHUB_PAT}@github.com/{GITHUB_USER}/{SOURCE_REPO_NAME}.git"
 TARGET_REPO = f"https://{GITHUB_USER}:{GITHUB_PAT}@github.com/{GITHUB_USER}/{TARGET_REPO_NAME}.git"
 
-# === COMMANDO-HULPFUNCTIE ===
-def run(command, cwd=None):
-    print(f"⚙️  {command}")
-    result = subprocess.run(command, shell=True, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+def run(cmd, cwd=None):
+    result = subprocess.run(cmd, cwd=cwd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
-        raise RuntimeError(f"❌ Fout bij commando: {command}\n{result.stderr}")
+        raise RuntimeError(f"Fout bij commando: {cmd}\n{result.stderr}")
     return result.stdout.strip()
 
-# === BESTANDEN VEILIG VERWIJDEREN (WINDOWS) ===
-def on_rm_error(func, path, exc_info):
-    os.chmod(path, stat.S_IWRITE)
-    func(path)
+def mirror_first_parent():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        source_path = os.path.join(temp_dir, "source")
+        mirror_path = os.path.join(temp_dir, "mirror")
 
-# === SNAPSHOT MIRRORING ===
-def snapshot_mirror():
-    temp_dir = tempfile.mkdtemp()
-    clone_path = os.path.join(temp_dir, "clone")
-    clean_path = os.path.join(temp_dir, "clean")
+        print("📥 Clone source-repo...")
+        run(f"git clone {SOURCE_REPO} {source_path}")
+        run("git fetch origin master", cwd=source_path)
 
-    try:
-        print("📥 Cloning volledige master branch...")
-        run(f"git clone --branch master --single-branch --depth=1 {SOURCE_REPO} clone", cwd=temp_dir)
-        run("git fetch origin master", cwd=clone_path)
-        run("git checkout origin/master", cwd=clone_path)
+        print("📥 Clone mirror-repo...")
+        run(f"git clone {TARGET_REPO} {mirror_path}")
 
+        commits = run("git log --first-parent --reverse --format=%H origin/master", cwd=source_path).splitlines()
 
-        print("📤 Extract laatste snapshot (zonder .git)...")
-        shutil.copytree(clone_path, clean_path, ignore=shutil.ignore_patterns('.git'))
+        for commit_hash in commits:
+            print(f"🔁 Mirror commit: {commit_hash}")
+            # Checkout de commit
+            run(f"git checkout {commit_hash}", cwd=source_path)
 
-        print("🧾 Haal originele commit-boodschap op...")
-        commit_message = run("git log -1 --pretty=%B", cwd=clone_path)
+            # Clear mirror repo (behalve .git)
+            for item in os.listdir(mirror_path):
+                if item == ".git":
+                    continue
+                item_path = os.path.join(mirror_path, item)
+                if os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+                else:
+                    os.remove(item_path)
 
-        print("🧱 Initialiseer nieuwe Git-repo in clean folder...")
-        run("git init", cwd=clean_path)
-        run("git config user.name \"YPTF-Engineering\"", cwd=clean_path)
-        run("git config user.email \"Engineering@yYPTF-Engineering.be\"", cwd=clean_path)
+            # Copy files van source naar mirror
+            for item in os.listdir(source_path):
+                if item == ".git":
+                    continue
+                src_item = os.path.join(source_path, item)
+                dst_item = os.path.join(mirror_path, item)
+                if os.path.isdir(src_item):
+                    shutil.copytree(src_item, dst_item)
+                else:
+                    shutil.copy2(src_item, dst_item)
 
-        run("git add .", cwd=clean_path)
-        run(f'git commit -m "{commit_message.strip()}"', cwd=clean_path)
+            # Commit in mirror met commit message bestand
+            message = run("git log -1 --pretty=%B", cwd=source_path).strip()
+            author_name = run("git log -1 --pretty=%an", cwd=source_path).strip()
+            author_email = run("git log -1 --pretty=%ae", cwd=source_path).strip()
 
-        print("🔗 Push naar mirror-repo...")
-        run(f"git remote add origin {TARGET_REPO}", cwd=clean_path)
-        run("git branch -M master", cwd=clean_path)
-        run("git push -f origin master", cwd=clean_path)
+            commit_file = os.path.join(mirror_path, "commit_msg.txt")
+            with open(commit_file, "w", encoding="utf-8") as f:
+                f.write(message)
 
-        print("✅ Laatste snapshot succesvol gepusht.")
-    finally:
-        print("🧹 Opruimen...")
-        shutil.rmtree(temp_dir, onerror=on_rm_error)
+            run("git add .", cwd=mirror_path)
+            run(f'git -c user.name="{author_name}" -c user.email="{author_email}" commit -F "{commit_file}"', cwd=mirror_path)
 
+        print("🚀 Push alle mirrored commits...")
+        run("git push origin master", cwd=mirror_path)
+        print("✅ Volledige mirror van first-parent master voltooid.")
 
-# === UITVOERING ===
 if __name__ == "__main__":
     try:
-        snapshot_mirror()
+        mirror_first_parent()
     except Exception as e:
-        print(f"❌ Fout tijdens mirroren: {e}")
+        print(f"❌ Fout tijdens mirroring: {e}")
