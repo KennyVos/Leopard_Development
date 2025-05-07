@@ -23,7 +23,7 @@ def run(cmd, cwd=None):
         raise RuntimeError(f"Fout bij commando: {cmd}\n{result.stderr}")
     return result.stdout.strip()
 
-def mirror_first_parent():
+def mirror_merge_commits_only():
     with tempfile.TemporaryDirectory() as temp_dir:
         source_path = os.path.join(temp_dir, "source")
         mirror_path = os.path.join(temp_dir, "mirror")
@@ -38,11 +38,17 @@ def mirror_first_parent():
         commits = run("git log --first-parent --reverse --format=%H origin/master", cwd=source_path).splitlines()
 
         for commit_hash in commits:
-            print(f"🔁 Mirror commit: {commit_hash}")
-            # Checkout de commit
+            # Check of commit een merge is (meer dan 1 ouder)
+            parent_line = run(f"git rev-list --parents -n 1 {commit_hash}", cwd=source_path)
+            parent_count = len(parent_line.strip().split()) - 1
+
+            if parent_count <= 1:
+                print(f"⏭️  Sla gewone commit {commit_hash} over (heeft {parent_count} ouder)")
+                continue
+
+            print(f"🔁 Mirror merge commit: {commit_hash}")
             run(f"git checkout {commit_hash}", cwd=source_path)
 
-            # Clear mirror repo (behalve .git)
             for item in os.listdir(mirror_path):
                 if item == ".git":
                     continue
@@ -52,7 +58,6 @@ def mirror_first_parent():
                 else:
                     os.remove(item_path)
 
-            # Copy files van source naar mirror
             for item in os.listdir(source_path):
                 if item == ".git":
                     continue
@@ -63,7 +68,6 @@ def mirror_first_parent():
                 else:
                     shutil.copy2(src_item, dst_item)
 
-            # Commit in mirror met commit message bestand
             message = run("git log -1 --pretty=%B", cwd=source_path).strip()
             author_name = run("git log -1 --pretty=%an", cwd=source_path).strip()
             author_email = run("git log -1 --pretty=%ae", cwd=source_path).strip()
@@ -75,12 +79,12 @@ def mirror_first_parent():
             run("git add .", cwd=mirror_path)
             run(f'git -c user.name="{author_name}" -c user.email="{author_email}" commit -F "{commit_file}"', cwd=mirror_path)
 
-        print("🚀 Push alle mirrored commits...")
+        print("🚀 Push alle gemirrorde merge commits...")
         run("git push origin master", cwd=mirror_path)
-        print("✅ Volledige mirror van first-parent master voltooid.")
+        print("✅ Alleen merge commits van master succesvol gemirrord.")
 
 if __name__ == "__main__":
     try:
-        mirror_first_parent()
+        mirror_merge_commits_only()
     except Exception as e:
         print(f"❌ Fout tijdens mirroring: {e}")
