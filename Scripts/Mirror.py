@@ -39,7 +39,10 @@ def snapshot_mirror():
 
     try:
         print("📥 Cloning volledige master branch...")
-        run(f"git clone --branch master {SOURCE_REPO} clone", cwd=temp_dir)
+        run(f"git clone --branch master --single-branch --depth=1 {SOURCE_REPO} clone", cwd=temp_dir)
+        run("git fetch origin master", cwd=clone_path)
+        run("git checkout origin/master", cwd=clone_path)
+
 
         print("📤 Extract laatste snapshot (zonder .git)...")
         shutil.copytree(clone_path, clean_path, ignore=shutil.ignore_patterns('.git'))
